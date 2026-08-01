@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- **Collision note ids survive the frontmatter re-parse** (an orphan-note
+  foreign-key crash). `write_note()` appended `-2` to a slug already sitting on
+  `slugify()`'s 80-char cap, producing an 82-char id whose next parse
+  re-slugified it back under the cap: the suffix fell off, the second note
+  collapsed into the base id, sync refused the duplicate, and the `sources`
+  insert died with `IntegrityError: FOREIGN KEY constraint failed`, leaving the
+  `.md` file on disk but permanently unregistered. Collision ids are now built
+  by trimming the base so base+suffix fits both the 80-char and 200-byte caps,
+  then normalized once, so the disk id equals its own re-parse; short-title
+  collisions keep their existing `-2` ids, so existing vaults do not shift.
+
 ### Two safety fixes in the viewer and the installer
 
 - **Stored XSS in `hpr serve` (#72, reported by @letospace).** `_serve_search` escaped every interpolated value except the FTS snippet, and the snippet is note body text — remote page content, for a fetched note. `strip_markdown` was not a defense: its tag regex needs a closing `>`, so an unterminated `<img src=x onerror=...` passed into `body_plain` intact, and the `>` of the `</mark>` the search page injects finished the tag. The snippet is escaped before the markers are substituted now, so the `<mark>` tags are the only markup that survives. Bounded by the server binding `127.0.0.1` and being read-only, but the script ran same-origin with the wiki and could read every note the viewer could reach. Link and image URLs in the renderer also got a scheme allowlist, so a note body can no longer render a `javascript:` or `data:` link.
